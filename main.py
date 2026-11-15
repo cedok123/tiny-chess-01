@@ -23,7 +23,7 @@ EP = -1
 KW = 4
 KB = 116
 N = 0
-BUDGET = 60000
+BUDGET = 120000
 TT = {}
 KILL = [[0, 0] for _ in range(64)]
 
@@ -300,6 +300,27 @@ def qsearch(alpha, beta, ply):
     N += 1
     if N >= BUDGET:
         raise Done
+    ks = KW if SIDE > 0 else KB
+    if attacked(ks, -SIDE):
+        # in check: no stand-pat; search every evasion, mate scores if none
+        best = -MATE
+        legal = 0
+        for m in order(gen(), 0, ply):
+            u = make(m)
+            k2 = KB if SIDE > 0 else KW
+            if not attacked(k2, SIDE):
+                legal += 1
+                sc = -qsearch(-beta, -alpha, ply + 1)
+                unmake(u)
+                if sc > best:
+                    best = sc
+                if sc > alpha:
+                    alpha = sc
+                if alpha >= beta:
+                    return beta
+            else:
+                unmake(u)
+        return -MATE + ply if legal == 0 else alpha
     stand = evaluate()
     if stand >= beta:
         return beta
@@ -322,12 +343,16 @@ def qsearch(alpha, beta, ply):
 
 
 def search(alpha, beta, depth, ply):
-    global N
+    global N, SIDE, EP
     N += 1
     if N >= BUDGET:
         raise Done
     if depth <= 0:
         return qsearch(alpha, beta, ply)
+    ks0 = KW if SIDE > 0 else KB
+    chk = attacked(ks0, -SIDE)
+    if chk:
+        depth += 1
     key = (tuple(B), SIDE, CR, EP)
     ent = TT.get(key)
     ttmove = 0
@@ -340,6 +365,17 @@ def search(alpha, beta, depth, ply):
         if fl == 2 and sc >= beta:
             return sc
         ttmove = bm
+    if depth >= 3 and not chk and evaluate() >= beta:
+        e0 = EP
+        EP = -1
+        SIDE = -SIDE
+        try:
+            sc = -search(-beta, -beta + 1, depth - 3, ply + 1)
+        finally:
+            SIDE = -SIDE
+            EP = e0
+        if sc >= beta:
+            return beta
     best = -MATE
     bestm = 0
     flag = 1
@@ -368,8 +404,7 @@ def search(alpha, beta, depth, ply):
             flag = 2
             break
     if legal == 0:
-        ks = KW if SIDE > 0 else KB
-        return -MATE + ply if attacked(ks, -SIDE) else 0
+        return -MATE + ply if chk else 0
     TT[key] = (depth, best, flag, bestm)
     return best
 
